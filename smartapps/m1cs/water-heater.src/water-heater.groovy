@@ -41,31 +41,27 @@ preferences {
 	//	input "generator1", "capability.sensor", title: "Generator?", required: false
 	//}
     section("And the Boiler is not on...") {
-		input "boiler1", "capability.switch", required: false
+		input "thermostat1", "capability.thermostat", title: "Thermostat?", required: false
 	}
 	section("Turn on the Immersion Heater...") {
 		input "immersion1", "capability.switch", required: true
 	}	
-	//section("Or if the house temperature is below...") {
-	//	input "thermostat1", "capability.temperatureMeasurement", title: "Thermostat?", required: false
-	//}
-	//section("Turn on the Boiler...") {
-	//	input "boiler1", "capability.switch", required: false
-	//}	
+	section("Or turn on the boiler if the house temperature is below...") {
+		input "roomtemperature1", "number", title: "Minimum Temperature?", required: false
+	}
 	section("For a duration of...") {
 		input "duration1", "number", title: "Minutes?", required: true
 	}
-    section("or until the temperature reaches...") {
+    section("Or until the water temperature reaches...") {
 		input "temperature2", "number", title: "Target Temperature?", required: true
 	}
-    section( "Notifications" ) {
+    section("Notifications") {
         input("recipients", "contact", title: "Send notifications to") {
             input "sendPushMessage", "enum", title: "Send a push notification?", options: ["Yes", "No"], required: false
             input "phone1", "phone", title: "Send a Text Message?", required: false
         }
     }
 }
-
 
 def installed() {
 	schedule(startTime, "startTimerCallback")
@@ -80,55 +76,101 @@ def startTimerCallback() {
     
 	def currentTemp = temperatureSensor1.temperatureState.doubleValue
 	def minTemp = temperature1
-	def mySwitch = settings.immersion1
+	def myImmersion = settings.immersion1
+	def myBoiler = settings.thermostat1
 
 	state.startTemperature = currentTemp
 
 	if (currentTemp <= minTemp) {
-        log.debug "Water Temperature ($currentTemp) is below $minTemp"     
-        def boilerOn = boiler1?.currentValue("switch") == "on"
-    	if (boilerOn == null || boilerOn == false) {
-        	log.debug "Boiler is off or not defined"
-            log.debug "Water Temperature ($currentTemp) is below $minTemp:  sending notification and activating $mySwitch"
-            def tempScale = location.temperatureScale ?: "C"
-            send("Turning on $mySwitch because ${temperatureSensor1.displayName} is reporting a temperature of ${currentTemp}${tempScale}")
+        log.debug "Water Temperature ($currentTemp) is below minimum water temperature ($minTemp)" 
+        
+        def boilerState = thermostat1?.currentValue("thermostatOperatingState")
+        log.debug "Thermostat says the boiler is currently: $boilerState"
+        
+        def roomTemperature = thermostat1?.temperatureState.doubleValue
+        log.debug "Thermostat says the room temperature is currently: $roomTemperature"
+        
+        def tempScale = location.temperatureScale ?: "C"
+        
+        //we can get the room temperature, there is a minimum room temperature set and the room temp is less than the minimum...
+        if (roomTemperature != null && roomtemperature1 != null && roomTemperature <= roomtemperature1) {
+        	log.debug "Room Temperature ($roomTemperature) is below minimum room temperature ($roomtemperature1)" 
+            log.debug "We want to use the boiler instead of the immersion."            
+            send("Turning on $myBoiler because ${temperatureSensor1.displayName} is reporting a temperature of ${roomTemperature}${tempScale}")
+            turnOnBoiler()
+            subscribe(temperatureSensor1, "temperature", temperatureHandlerBoiler)
+            def MinuteDelay = 60 * duration1
+            runIn(MinuteDelay, boilerTimerExpired)
+            //make sure the immersion isn't on at the same time
+            turnOffImmersion()
+        }
+        else if (boilerState == null || boilerState == "idle") {
+        	log.debug "We want to use the immersion heater"
+            send("Turning on $myImmersion because ${temperatureSensor1.displayName} is reporting a temperature of ${currentTemp}${tempScale}")
             turnOnImmersion()
             //start monitoring the temperature
-            subscribe(temperatureSensor1, "temperature", temperatureHandler)
+            subscribe(temperatureSensor1, "temperature", temperatureHandlerImmersion)
             def MinuteDelay = 60 * duration1
             runIn(MinuteDelay, immersionTimerExpired)
         }
         else {
-            log.debug "Boiler is already heating the water - no need for immersion"        
+            log.debug "$myBoiler is already heating the water - no need for $myImmersion"        
         }
 	}
     else {    
-		log.debug "Temperature is above $minTemp:  not activating $mySwitch"
+		log.debug "Water Temperature is above $minTemp:  no heating required"
     }
 }
 
-
-def temperatureHandler(evt) {
+def temperatureHandlerImmersion(evt) {
 	log.trace "Current Water Temperature: $evt.value"
 
 	def targetTemperature = temperature2
-	def mySwitch = settings.immersion
+	def myImmersion = settings.immersion1
 
 	if (evt.doubleValue >= targetTemperature) {
-        log.debug "Temperature above $targetTemperature:  sending notification and deactivating $mySwitch"
+        log.debug "Temperature above $targetTemperature:  sending notification and deactivating $myImmersion"
         def tempScale = location.temperatureScale ?: "C"
-        send("${temperatureSensor1.displayName} is too cold, reporting a temperature of ${evt.value}${evt.unit?:tempScale}")
+        send("${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
         //turn off the immersion and unsubscribe the event.
         turnOffImmersion()
         unsubscribe()
+        unschedule(immersionTimerExpired)
 	}
 }
+def temperatureHandlerBoiler(evt) {
+	log.trace "Current Water Temperature: $evt.value"
+
+	def targetTemperature = temperature2
+	def myBoiler = settings.thermostat1
+
+	if (evt.doubleValue >= targetTemperature) {
+        log.debug "Temperature above $targetTemperature:  sending notification and deactivating $myBoiler"
+        def tempScale = location.temperatureScale ?: "C"
+        send("${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
+        //turn off the boiler and unsubscribe the event.
+        turnOffBoiler()
+        unsubscribe()
+        unschedule(boilerTimerExpired)
+	}
+}
+
 def immersionTimerExpired() {
 	def currentTemp = temperatureSensor1.temperatureState.doubleValue
     
 	log.debug "Turning off the immersion as the timer has expired."
     log.debug "Current Water Temperature is $currentTemp, start Temperature was $state.startTemperature"
 	turnOffImmersion()
+    unsubscribe()
+}
+
+def boilerTimerExpired() {
+	def currentTemp = temperatureSensor1.temperatureState.doubleValue
+    
+	log.debug "Turning off the boiler as the timer has expired."
+    log.debug "Current Water Temperature is $currentTemp, start Temperature was $state.startTemperature"
+	turnOffBoiler()
+    unsubscribe()
 }
 
 def turnOnImmersion() {
@@ -141,6 +183,18 @@ def turnOffImmersion() {
 	def mySwitch = settings.immersion1
 	log.debug "Disabling $mySwitch"
 	immersion1?.off()
+}
+
+def turnOnBoiler() {
+	def mySwitch = settings.thermostat1
+	log.debug "Enabling $mySwitch"
+	thermostat1?.heat()
+}
+
+def turnOffBoiler() {
+	def mySwitch = settings.thermostat1
+	log.debug "Disabling $mySwitch"
+	thermostat1?.auto()
 }
 
 private send(msg) {
