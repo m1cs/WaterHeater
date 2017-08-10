@@ -114,11 +114,13 @@ def startTimerCallback() {
             runIn(MinuteDelay, immersionTimerExpired)
         }
         else {
-            log.debug "$myBoiler is already heating the water - no need for $myImmersion"        
+            log.debug "$myBoiler is already heating the water - no need for $myImmersion"
+            send("$myBoiler is already heating the water - no need for $myImmersion")        
         }
 	}
     else {    
 		log.debug "Water Temperature is above $minTemp:  no heating required"
+        send("Water Temperature is above $minTemp:  no heating required ( ${currentTemp}${tempScale} )")
     }
 }
 
