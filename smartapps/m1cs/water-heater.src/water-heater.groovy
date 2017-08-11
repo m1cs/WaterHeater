@@ -3,7 +3,7 @@
  *	This is for the scenario where an immerison heater is used to heat a water tank, along with other sources.
  *	Currently we have: Solar Water Heating, Boiler Water Heating, Immersion Water Heating, (where the boiler will also heat the house (no separation))
  *	If the water is below a threshold, turn the immersion on for a set time period.
- *	In future we can detect if the PV Panels or Wind Turbine is spinning to use the most cost effective heating method.
+ *	In future we can detect if the PV Panels or Wind Turbine is generating electic (current sensor) to use the most cost effective heating method.
  *
  *	Author: Mike Baird
  *
@@ -35,7 +35,7 @@ preferences {
 		input "temperatureSensor1", "capability.temperatureMeasurement", required: true
 	}
 	section("If the temperature is below...") {
-		input "temperature1", "number", title: "Minimum Temperature?", required: true
+		input "minimumTemperature", "number", title: "Minimum Temperature?", required: true
 	}
 	//section("And we are generating electricity...") {
 	//	input "generator1", "capability.sensor", title: "Generator?", required: false
@@ -47,13 +47,13 @@ preferences {
 		input "immersion1", "capability.switch", required: true
 	}	
 	section("Or turn on the boiler if the house temperature is below...") {
-		input "roomtemperature1", "number", title: "Minimum Temperature?", required: false
+		input "roomMinimumTemperature", "number", title: "Minimum Temperature?", required: false
 	}
 	section("For a duration of...") {
-		input "duration1", "number", title: "Minutes?", required: true
+		input "duration", "number", title: "Minutes?", required: true
 	}
     section("Or until the water temperature reaches...") {
-		input "temperature2", "number", title: "Target Temperature?", required: true
+		input "targetTemperature", "number", title: "Target Temperature?", required: true
 	}
     section("Notifications") {
         input("recipients", "contact", title: "Send notifications to") {
@@ -75,7 +75,7 @@ def updated() {
 def startTimerCallback() {
     
 	def currentTemp = temperatureSensor1.temperatureState.doubleValue
-	def minTemp = temperature1
+	def minTemp = minimumTemperature
 	def myImmersion = settings.immersion1
 	def myBoiler = settings.thermostat1
 
@@ -85,32 +85,31 @@ def startTimerCallback() {
         log.debug "Water Temperature ($currentTemp) is below minimum water temperature ($minTemp)" 
         
         def boilerState = thermostat1?.currentValue("thermostatOperatingState")
-        log.debug "Thermostat says the boiler is currently: $boilerState"
+        log.debug "Boiler is currently: $boilerState"
         
         def roomTemperature = thermostat1?.temperatureState.doubleValue
-        log.debug "Thermostat says the room temperature is currently: $roomTemperature"
+        log.debug "Room temperature is currently: $roomTemperature"
         
         def tempScale = location.temperatureScale ?: "C"
         
         //we can get the room temperature, there is a minimum room temperature set and the room temp is less than the minimum...
-        if (roomTemperature != null && roomtemperature1 != null && roomTemperature <= roomtemperature1) {
-        	log.debug "Room Temperature ($roomTemperature) is below minimum room temperature ($roomtemperature1)" 
+        if (roomTemperature != null && roomMinimumTemperature != null && roomTemperature <= roomMinimumTemperature) {
+        	log.debug "Room Temperature ($roomTemperature) is below minimum room temperature ($roomMinimumTemperature)" 
             log.debug "We want to use the boiler instead of the immersion."            
             send("Turning on $myBoiler because ${temperatureSensor1.displayName} is reporting a temperature of ${roomTemperature}${tempScale}")
             turnOnBoiler()
             subscribe(temperatureSensor1, "temperature", temperatureHandlerBoiler)
-            def MinuteDelay = 60 * duration1
+            def MinuteDelay = 60 * duration
             runIn(MinuteDelay, boilerTimerExpired)
             //make sure the immersion isn't on at the same time
             turnOffImmersion()
         }
         else if (boilerState == null || boilerState == "idle") {
-        	log.debug "We want to use the immersion heater"
             send("Turning on $myImmersion because ${temperatureSensor1.displayName} is reporting a temperature of ${currentTemp}${tempScale}")
             turnOnImmersion()
             //start monitoring the temperature
             subscribe(temperatureSensor1, "temperature", temperatureHandlerImmersion)
-            def MinuteDelay = 60 * duration1
+            def MinuteDelay = 60 * duration
             runIn(MinuteDelay, immersionTimerExpired)
         }
         else {
@@ -127,7 +126,7 @@ def startTimerCallback() {
 def temperatureHandlerImmersion(evt) {
 	log.trace "Current Water Temperature: $evt.value"
 
-	def targetTemperature = temperature2
+	def targetTemperature = targetTemperature
 	def myImmersion = settings.immersion1
 
 	if (evt.doubleValue >= targetTemperature) {
@@ -143,7 +142,7 @@ def temperatureHandlerImmersion(evt) {
 def temperatureHandlerBoiler(evt) {
 	log.trace "Current Water Temperature: $evt.value"
 
-	def targetTemperature = temperature2
+	def targetTemperature = targetTemperature
 	def myBoiler = settings.thermostat1
 
 	if (evt.doubleValue >= targetTemperature) {
