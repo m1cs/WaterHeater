@@ -132,7 +132,7 @@ def temperatureHandlerImmersion(evt) {
 	if (evt.doubleValue >= targetTemperature) {
         log.debug "Temperature above $targetTemperature:  sending notification and deactivating $myImmersion"
         def tempScale = location.temperatureScale ?: "C"
-        send("${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
+        send("Turning off the Immersion: ${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
         //turn off the immersion and unsubscribe the event.
         turnOffImmersion()
         unsubscribe()
@@ -148,7 +148,7 @@ def temperatureHandlerBoiler(evt) {
 	if (evt.doubleValue >= targetTemperature) {
         log.debug "Temperature above $targetTemperature:  sending notification and deactivating $myBoiler"
         def tempScale = location.temperatureScale ?: "C"
-        send("${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
+        send("Turning off the Boiler: ${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
         //turn off the boiler and unsubscribe the event.
         turnOffBoiler()
         unsubscribe()
@@ -159,8 +159,9 @@ def temperatureHandlerBoiler(evt) {
 def immersionTimerExpired() {
 	def currentTemp = temperatureSensor1.temperatureState.doubleValue
     
-	log.debug "Turning off the immersion as the timer has expired."
+	log.debug "Turning off the Immersion as the timer has expired."
     log.debug "Current Water Temperature is $currentTemp, start Temperature was $state.startTemperature"
+    send("Turning off the Immersion:  Current Water Temperature is $currentTemp, start Temperature was $state.startTemperature")
 	turnOffImmersion()
     unsubscribe()
 }
@@ -170,6 +171,7 @@ def boilerTimerExpired() {
     
 	log.debug "Turning off the boiler as the timer has expired."
     log.debug "Current Water Temperature is $currentTemp, start Temperature was $state.startTemperature"
+    send("Turning off the Boiler:  Current Water Temperature is $currentTemp, start Temperature was $state.startTemperature")
 	turnOffBoiler()
     unsubscribe()
 }
