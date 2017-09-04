@@ -79,7 +79,9 @@ def startTimerCallback() {
 	def myImmersion = settings.immersion1
 	def myBoiler = settings.thermostat1
 
-	state.startTemperature = currentTemp
+	def tempScale = location.temperatureScale ?: "C"
+	
+    state.startTemperature = currentTemp
 
 	if (currentTemp <= minTemp) {
         log.debug "Water Temperature ($currentTemp) is below minimum water temperature ($minTemp)" 
@@ -89,8 +91,6 @@ def startTimerCallback() {
         
         def roomTemperature = thermostat1?.temperatureState.doubleValue
         log.debug "Room temperature is currently: $roomTemperature"
-        
-        def tempScale = location.temperatureScale ?: "C"
         
         //we can get the room temperature, there is a minimum room temperature set and the room temp is less than the minimum...
         if (roomTemperature != null && roomMinimumTemperature != null && roomTemperature <= roomMinimumTemperature) {
@@ -128,10 +128,11 @@ def temperatureHandlerImmersion(evt) {
 
 	def targetTemperature = targetTemperature
 	def myImmersion = settings.immersion1
+    
+    def tempScale = location.temperatureScale ?: "C"
 
 	if (evt.doubleValue >= targetTemperature) {
         log.debug "Temperature above $targetTemperature:  sending notification and deactivating $myImmersion"
-        def tempScale = location.temperatureScale ?: "C"
         send("Turning off the Immersion: ${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
         //turn off the immersion and unsubscribe the event.
         turnOffImmersion()
@@ -139,15 +140,17 @@ def temperatureHandlerImmersion(evt) {
         unschedule(immersionTimerExpired)
 	}
 }
+
 def temperatureHandlerBoiler(evt) {
 	log.trace "Current Water Temperature: $evt.value"
 
 	def targetTemperature = targetTemperature
 	def myBoiler = settings.thermostat1
+    
+    def tempScale = location.temperatureScale ?: "C"
 
 	if (evt.doubleValue >= targetTemperature) {
         log.debug "Temperature above $targetTemperature:  sending notification and deactivating $myBoiler"
-        def tempScale = location.temperatureScale ?: "C"
         send("Turning off the Boiler: ${temperatureSensor1.displayName} ( ${evt.value}${evt.unit?:tempScale} ) is above the target temperature ( $targetTemperature )")
         //turn off the boiler and unsubscribe the event.
         turnOffBoiler()
